@@ -1,3 +1,4 @@
+import django
 import json
 
 from django.contrib.postgres import lookups
@@ -10,6 +11,7 @@ class JsonAdapter(jsonb.JsonAdapter):
     """
     Customized psycopg2.extras.Json to allow for a custom encoder.
     """
+
     def __init__(self, adapted, dumps=None, encoder=None):
         super().__init__(adapted, dumps=dumps, encoder=encoder)
 
@@ -93,9 +95,10 @@ class HasAnyKeys(PostgresOnlyLookup, lookups.HasAnyKeys):
     pass
 
 
-@FallbackJSONField.register_lookup
-class JSONExact(lookups.JSONExact):
-    pass
+if django.VERSION >= (2, 1):
+    @FallbackJSONField.register_lookup
+    class JSONExact(lookups.JSONExact):
+        pass
 
 
 class FallbackKeyTransform(jsonb.KeyTransform):
