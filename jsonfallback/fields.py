@@ -18,11 +18,15 @@ class FallbackJSONField(JSONField):
         value = super().get_db_prep_value(value, connection, prepared)
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return value
+        elif value is None:
+            return None
         else:
             return value.dumps(value.adapted)
 
     def from_db_value(self, value, expression, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return value
+        elif value is None:
+            return None
         else:
             return json.loads(value)

@@ -1,9 +1,10 @@
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from jsonfallback.fields import FallbackJSONField
 
 
 class Book(models.Model):
-    data = FallbackJSONField()
+    data = FallbackJSONField(encoder=DjangoJSONEncoder, null=True, default={'foo': 'bar'})
 
     def __str__(self):
         return str(self.data['title'])
