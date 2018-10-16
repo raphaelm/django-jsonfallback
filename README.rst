@@ -13,7 +13,7 @@ JSONField with fallback for Django
 Compatible with:
 
 * Python 3.4 to 3.6
-* Django 1.11 to 2.1
+* Django 2.0 to 2.1
 * SQlite, MySQL, PostgreSQL
 
 License
