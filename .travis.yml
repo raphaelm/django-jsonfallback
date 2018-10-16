@@ -40,9 +40,9 @@ matrix:
     - python: 3.6
       env: TOXENV=py36-django21 TOXDB=sqlite
     - python: 3.6
-      env: TOXENV=coverage
+      env: TOXENV=coverage TOXDB=sqlite
     - python: 3.6
-      env: TOXENV=style
+      env: TOXENV=style TOXDB=sqlite
 addons:
   postgresql: "9.4"
 
