@@ -50,11 +50,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'tests.testapp.wsgi.application'
 
-if True:
+if os.environ['TOXDB'] == 'postgres':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': 'jsonfallback',
+        }
+    }
+elif os.environ['TOXDB'] == 'mysql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'jsonfallback',
+            'USER': 'root',
+            'HOST': '127.0.0.1',
+            'PORT': 3306
         }
     }
 else:
