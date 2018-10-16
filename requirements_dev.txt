@@ -10,4 +10,5 @@ isort
 flake8
 lxml>=4.2.4
 html5lib
-
+psycopg2
+mysqlclient
