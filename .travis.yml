@@ -1,0 +1,66 @@
+language: python
+sudo: false
+install:
+  - pip install tox
+script:
+  - tox
+services:
+  - mysql
+  - postgresql
+matrix:
+  include:
+    - python: 3.4
+      env: TOXENV=py34-django111 TOXDB=mysql
+    - python: 3.4
+      env: TOXENV=py34-django20 TOXDB=mysql
+    - python: 3.5
+      env: TOXENV=py35-django111 TOXDB=mysql
+    - python: 3.5
+      env: TOXENV=py35-django20 TOXDB=mysql
+    - python: 3.5
+      env: TOXENV=py35-django21 TOXDB=mysql
+    - python: 3.6
+      env: TOXENV=py36-django111 TOXDB=mysql
+    - python: 3.6
+      env: TOXENV=py36-django20 TOXDB=mysql
+    - python: 3.6
+      env: TOXENV=py36-django21 TOXDB=mysql
+    - python: 3.4
+      env: TOXENV=py34-django111 TOXDB=postgres
+    - python: 3.4
+      env: TOXENV=py34-django20 TOXDB=postgres
+    - python: 3.5
+      env: TOXENV=py35-django111 TOXDB=postgres
+    - python: 3.5
+      env: TOXENV=py35-django20 TOXDB=postgres
+    - python: 3.5
+      env: TOXENV=py35-django21 TOXDB=postgres
+    - python: 3.6
+      env: TOXENV=py36-django111 TOXDB=postgres
+    - python: 3.6
+      env: TOXENV=py36-django20 TOXDB=postgres
+    - python: 3.6
+      env: TOXENV=py36-django21 TOXDB=postgres
+    - python: 3.4
+      env: TOXENV=py34-django111 TOXDB=sqlite
+    - python: 3.4
+      env: TOXENV=py34-django20 TOXDB=sqlite
+    - python: 3.5
+      env: TOXENV=py35-django111 TOXDB=sqlite
+    - python: 3.5
+      env: TOXENV=py35-django20 TOXDB=sqlite
+    - python: 3.5
+      env: TOXENV=py35-django21 TOXDB=sqlite
+    - python: 3.6
+      env: TOXENV=py36-django111 TOXDB=sqlite
+    - python: 3.6
+      env: TOXENV=py36-django20 TOXDB=sqlite
+    - python: 3.6
+      env: TOXENV=py36-django21 TOXDB=sqlite
+    - python: 3.6
+      env: TOXENV=coverage
+    - python: 3.6
+      env: TOXENV=style
+addons:
+  postgresql: "9.4"
+
