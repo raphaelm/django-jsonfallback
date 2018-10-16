@@ -62,6 +62,16 @@ def test_query_icontains_of_field(books):
 
 
 @pytest.mark.django_db
+@xfail
+def test_order_by(books):
+    assert list(Book.objects.order_by('data__title').values_list('data__title', flat=True)) == [
+        'Harry Potter',
+        'The Lord of the Rings'
+    ]
+    assert Book.objects.filter(data__title__icontains='foo').count() == 0
+
+
+@pytest.mark.django_db
 def test_query_equal(books):
     assert Book.objects.filter(data={'title': 'Harry Potter', 'author': 'Rowling'}).count() == 1
     assert Book.objects.filter(data={'author': 'Brett'}).count() == 0
