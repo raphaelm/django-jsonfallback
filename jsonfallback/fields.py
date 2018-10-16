@@ -6,6 +6,19 @@ from django.db import NotSupportedError
 from django.db.models import TextField, lookups as builtin_lookups
 
 
+class JsonAdapter(jsonb.JsonAdapter):
+    """
+    Customized psycopg2.extras.Json to allow for a custom encoder.
+    """
+    def __init__(self, adapted, dumps=None, encoder=None):
+        super().__init__(adapted, dumps=dumps, encoder=encoder)
+
+    def dumps(self, obj):
+        options = {'cls': self.encoder} if self.encoder else {}
+        options['sort_keys'] = True
+        return json.dumps(obj, **options)
+
+
 class FallbackJSONField(jsonb.JSONField):
     def db_type(self, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
@@ -16,6 +29,11 @@ class FallbackJSONField(jsonb.JSONField):
                 return connection.data_types["TextField"] % data
             except KeyError:
                 return None
+
+    def get_prep_value(self, value):
+        if value is not None:
+            return JsonAdapter(value, encoder=self.encoder)
+        return value
 
     def get_db_prep_value(self, value, connection, prepared=False):
         value = super().get_db_prep_value(value, connection, prepared)
@@ -76,7 +94,7 @@ class HasAnyKeys(PostgresOnlyLookup, lookups.HasAnyKeys):
 
 
 @FallbackJSONField.register_lookup
-class JSONExact(PostgresOnlyLookup, lookups.JSONExact):
+class JSONExact(lookups.JSONExact):
     pass
 
 
