@@ -11,12 +11,10 @@ JSONField with fallback for Django
    :target: https://codecov.io/gh/raphaelm/django-jsonfallback
 
 This is an extension to ``django.contrib.postgres.fields.JSONField``, that works on other
-databases than PostgreSQL. On these databases, it falls back to storing plain JSON content
-in a text field. It handles serialization and deserialization transparently for you, but
-advanced query features for JSON fields are only available on PostgreSQL.
+databases than PostgreSQL.
 
-We'd love to see this extended by using the ``django-mysql`` implementation on MySQL, but
-we lack the development capacity to do this. If you'd like to contribute, just get in touch!
+* On **MySQL**, it uses the native JSON data type and supports most features.
+* On **SQLite** and all other databases, it just stores JSON strings in a text field and does not support querying.
 
 Compatible with:
 

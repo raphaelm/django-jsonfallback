@@ -1,3 +1,4 @@
+import collections
 import django
 import json
 
@@ -5,7 +6,7 @@ from django.contrib.postgres import lookups
 from django.contrib.postgres.fields import jsonb, JSONField
 from django.core import checks
 from django.db import NotSupportedError
-from django.db.models import TextField, lookups as builtin_lookups
+from django.db.models import TextField, lookups as builtin_lookups, Func, Value
 from django_mysql.checks import mysql_connections
 from django_mysql.utils import connection_is_mariadb
 
@@ -25,9 +26,9 @@ class JsonAdapter(jsonb.JsonAdapter):
 
 
 class FallbackJSONField(jsonb.JSONField):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.encode = self.encoder or json.JSONEncoder(allow_nan=False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.decoder = json.JSONDecoder()
 
     def db_type(self, connection):
@@ -77,21 +78,7 @@ class FallbackJSONField(jsonb.JSONField):
 
     def check(self, **kwargs):
         errors = super(JSONField, self).check(**kwargs)
-        errors.extend(self._check_json_encoder())
         errors.extend(self._check_mysql_version())
-        return errors
-
-    def _check_json_encoder(self):
-        errors = []
-        if self.encoder.allow_nan:
-            errors.append(
-                checks.Error(
-                    'Custom JSON encoder should have allow_nan=False as MySQL '
-                    'does not support NaN/Infinity in JSON.',
-                    obj=self,
-                    id='django_mysql.E018',
-                ),
-            )
         return errors
 
     def _check_mysql_version(self):
@@ -132,7 +119,7 @@ class FallbackJSONField(jsonb.JSONField):
         if lookup_name in {
             'range', 'in', 'iexact', 'icontains', 'startswith',
             'istartswith', 'endswith', 'iendswith', 'search', 'regex',
-            'iregex',
+            'iregex', 'lemgth'
         }:
             raise NotImplementedError(
                 "Lookup '{}' doesn't work with JSONField".format(lookup_name),
@@ -140,53 +127,178 @@ class FallbackJSONField(jsonb.JSONField):
         return super().get_lookup(lookup_name)
 
 
-class PostgresOnlyLookup:
+class FallbackLookup:
     def as_sql(self, qn, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return super().as_sql(qn, connection)
         raise NotSupportedError(
-            'Lookups on JSONFields are only supported on PostgreSQL at the moment.'
+            'Lookups on JSONFields are only supported on PostgreSQL and MySQL at the moment.'
         )
 
 
 @FallbackJSONField.register_lookup
-class DataContains(PostgresOnlyLookup, lookups.DataContains):
-    pass
+class DataContains(FallbackLookup, lookups.DataContains):
+
+    def as_sql(self, qn, connection):
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            return super().as_sql(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs, lhs_params = self.process_lhs(qn, connection)
+            rhs, rhs_params = self.process_rhs(qn, connection)
+            for i, p in enumerate(rhs_params):
+                rhs_params[i] = p.dumps(p.adapted)  # Convert JSONAdapter to str
+            params = lhs_params + rhs_params
+            return 'JSON_CONTAINS({}, {})'.format(lhs, rhs), params
+        raise NotSupportedError('Lookup not supported for %s' % connection.settings_dict['ENGINE'])
 
 
 @FallbackJSONField.register_lookup
-class ContainedBy(PostgresOnlyLookup, lookups.ContainedBy):
-    pass
+class ContainedBy(FallbackLookup, lookups.ContainedBy):
+
+    def as_sql(self, qn, connection):
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            return super().as_sql(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs, lhs_params = self.process_lhs(qn, connection)
+            rhs, rhs_params = self.process_rhs(qn, connection)
+            for i, p in enumerate(rhs_params):
+                rhs_params[i] = p.dumps(p.adapted)  # Convert JSONAdapter to str
+            params = rhs_params + lhs_params
+            return 'JSON_CONTAINS({}, {})'.format(rhs, lhs), params
+        raise NotSupportedError('Lookup not supported for %s' % connection.settings_dict['ENGINE'])
 
 
 @FallbackJSONField.register_lookup
-class HasKey(PostgresOnlyLookup, lookups.HasKey):
-    pass
+class HasKey(FallbackLookup, lookups.HasKey):
+
+    def get_prep_lookup(self):
+        if not isinstance(self.rhs, str):
+            raise ValueError(
+                "JSONField's 'has_key' lookup only works with {} values".format(str),
+            )
+        return super().get_prep_lookup()
+
+    def as_sql(self, qn, connection):
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            return super().as_sql(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs, lhs_params = self.process_lhs(qn, connection)
+            key_name = self.rhs
+            path = '$.{}'.format(json.dumps(key_name))
+            params = lhs_params + [path]
+            return "JSON_CONTAINS_PATH({}, 'one', %s)".format(lhs), params
+        raise NotSupportedError('Lookup not supported for %s' % connection.settings_dict['ENGINE'])
+
+
+class JSONSequencesMixin(object):
+    def get_prep_lookup(self):
+        if not isinstance(self.rhs, collections.Sequence):
+            raise ValueError(
+                "JSONField's '{}' lookup only works with Sequences"
+                    .format(self.lookup_name),
+            )
+        return self.rhs
 
 
 @FallbackJSONField.register_lookup
-class HasKeys(PostgresOnlyLookup, lookups.HasKeys):
-    pass
+class HasKeys(FallbackLookup, lookups.HasKeys):
+
+    def as_sql(self, qn, connection):
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            return super().as_sql(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs, lhs_params = self.process_lhs(qn, connection)
+            paths = [
+                '$.{}'.format(json.dumps(key_name))
+                for key_name in self.rhs
+            ]
+            params = lhs_params + paths
+
+            sql = ['JSON_CONTAINS_PATH(', lhs, ", 'all', "]
+            sql.append(', '.join('%s' for _ in paths))
+            sql.append(')')
+            return ''.join(sql), params
+        raise NotSupportedError('Lookup not supported for %s' % connection.settings_dict['ENGINE'])
 
 
 @FallbackJSONField.register_lookup
-class HasAnyKeys(PostgresOnlyLookup, lookups.HasAnyKeys):
-    pass
+class HasAnyKeys(FallbackLookup, lookups.HasAnyKeys):
+
+    def as_sql(self, qn, connection):
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            return super().as_sql(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs, lhs_params = self.process_lhs(qn, connection)
+            paths = [
+                '$.{}'.format(json.dumps(key_name))
+                for key_name in self.rhs
+            ]
+            params = lhs_params + paths
+
+            sql = ['JSON_CONTAINS_PATH(', lhs, ", 'one', "]
+            sql.append(', '.join('%s' for _ in paths))
+            sql.append(')')
+            return ''.join(sql), params
+        raise NotSupportedError('Lookup not supported for %s' % connection.settings_dict['ENGINE'])
+
+
+class JSONValue(Func):
+    function = 'CAST'
+    template = '%(function)s(%(expressions)s AS JSON)'
+
+    def __init__(self, expression):
+        super(JSONValue, self).__init__(Value(expression))
 
 
 if django.VERSION >= (2, 1):
     @FallbackJSONField.register_lookup
     class JSONExact(lookups.JSONExact):
-        pass
+
+        def process_rhs(self, compiler, connection):
+            rhs, rhs_params = super().process_rhs(compiler, connection)
+            if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+                func_params = []
+                new_params = []
+                for i, p in enumerate(rhs_params):
+                    if not hasattr(p, '_prepare') and p is not None:
+                        print(repr(p))
+                        func, this_func_param = JSONValue(p).as_sql(compiler, connection)
+                        func_params.append(func)
+                        new_params += this_func_param
+                rhs, rhs_params = rhs % tuple(func_params), new_params
+
+            return rhs, rhs_params
 
 
 class FallbackKeyTransform(jsonb.KeyTransform):
     def as_sql(self, compiler, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return super().as_sql(compiler, connection)
+        elif connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            key_transforms = [self.key_name]
+            previous = self.lhs
+            while isinstance(previous, FallbackKeyTransform):
+                key_transforms.insert(0, previous.key_name)
+                previous = previous.lhs
+
+            lhs, params = compiler.compile(previous)
+            json_path = self.compile_json_path(key_transforms)
+            return 'JSON_EXTRACT({}, %s)'.format(lhs), params + [json_path]
+
         raise NotSupportedError(
-            'Transforms on JSONFields are only supported on PostgreSQL at the moment.'
+            'Transforms on JSONFields are only supported on PostgreSQL and MySQL at the moment.'
         )
+
+    def compile_json_path(self, key_transforms):
+        path = ['$']
+        for key_transform in key_transforms:
+            try:
+                num = int(key_transform)
+                path.append('[{}]'.format(num))
+            except ValueError:  # non-integer
+                path.append('.')
+                path.append(key_transform)
+        return ''.join(path)
 
 
 class FallbackKeyTransformFactory:
@@ -218,14 +330,47 @@ class KeyTransformTextLookupMixin:
         )
         super().__init__(key_text_transform, *args, **kwargs)
 
+    def process_rhs(self, qn, connection):
+        rhs = super().process_rhs(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            params = []
+            for p in rhs[1]:
+                params.append(json.dumps(p))
+            return rhs[0], params
+        return rhs
+
+
+class MySQLCaseInsensitiveMixin:
+    def process_lhs(self, compiler, connection, lhs=None):
+        lhs = super().process_lhs(compiler, connection, lhs=None)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            lhs = 'LOWER(%s)' % lhs[0], lhs[1]
+        return lhs
+
+    def process_rhs(self, qn, connection):
+        rhs = super().process_rhs(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            rhs = 'LOWER(%s)' % rhs[0], rhs[1]
+        return rhs
+
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIExact(KeyTransformTextLookupMixin, builtin_lookups.IExact):
+class KeyTransformExact(KeyTransformTextLookupMixin, builtin_lookups.IExact):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIContains(KeyTransformTextLookupMixin, builtin_lookups.IContains):
+class KeyTransformIExact(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IExact):
+    pass
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformIContains(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IContains):
+    pass
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformContains(KeyTransformTextLookupMixin, builtin_lookups.Contains):
     pass
 
 
@@ -235,7 +380,7 @@ class KeyTransformStartsWith(KeyTransformTextLookupMixin, builtin_lookups.Starts
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIStartsWith(KeyTransformTextLookupMixin, builtin_lookups.IStartsWith):
+class KeyTransformIStartsWith(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IStartsWith):
     pass
 
 
@@ -245,7 +390,7 @@ class KeyTransformEndsWith(KeyTransformTextLookupMixin, builtin_lookups.EndsWith
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIEndsWith(KeyTransformTextLookupMixin, builtin_lookups.IEndsWith):
+class KeyTransformIEndsWith(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IEndsWith):
     pass
 
 
