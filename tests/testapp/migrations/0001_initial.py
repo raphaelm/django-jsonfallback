@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('data', jsonfallback.fields.FallbackJSONField(
-                    encoder=DjangoJSONEncoder, null=True, default={'foo': 'bar'}
+                    encoder=DjangoJSONEncoder, null=False, default={'foo': 'bar'}
                 )),
             ],
         ),

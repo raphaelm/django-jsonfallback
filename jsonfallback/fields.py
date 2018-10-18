@@ -2,9 +2,12 @@ import django
 import json
 
 from django.contrib.postgres import lookups
-from django.contrib.postgres.fields import jsonb
+from django.contrib.postgres.fields import jsonb, JSONField
+from django.core import checks
 from django.db import NotSupportedError
 from django.db.models import TextField, lookups as builtin_lookups
+from django_mysql.checks import mysql_connections
+from django_mysql.utils import connection_is_mariadb
 
 
 class JsonAdapter(jsonb.JsonAdapter):
@@ -22,9 +25,16 @@ class JsonAdapter(jsonb.JsonAdapter):
 
 
 class FallbackJSONField(jsonb.JSONField):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.encode = self.encoder or json.JSONEncoder(allow_nan=False)
+        self.decoder = json.JSONDecoder()
+
     def db_type(self, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return super().db_type(connection)
+        elif connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            return 'json'
         else:
             data = self.db_type_parameters(connection)
             try:
@@ -49,6 +59,11 @@ class FallbackJSONField(jsonb.JSONField):
     def from_db_value(self, value, expression, connection):
         if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
             return value
+        elif connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+            if isinstance(value, str):
+                return self.decoder.decode(value)
+            else:
+                return value
         elif value is None:
             return None
         else:
@@ -59,6 +74,70 @@ class FallbackJSONField(jsonb.JSONField):
         if transform:
             return transform
         return FallbackKeyTransformFactory(name)
+
+    def check(self, **kwargs):
+        errors = super(JSONField, self).check(**kwargs)
+        errors.extend(self._check_json_encoder())
+        errors.extend(self._check_mysql_version())
+        return errors
+
+    def _check_json_encoder(self):
+        errors = []
+        if self.encoder.allow_nan:
+            errors.append(
+                checks.Error(
+                    'Custom JSON encoder should have allow_nan=False as MySQL '
+                    'does not support NaN/Infinity in JSON.',
+                    obj=self,
+                    id='django_mysql.E018',
+                ),
+            )
+        return errors
+
+    def _check_mysql_version(self):
+        errors = []
+        any_conn_works = False
+        conns = mysql_connections()
+        for alias, conn in conns:
+            if (
+                    hasattr(conn, 'mysql_version') and
+                    not connection_is_mariadb(conn) and
+                    conn.mysql_version >= (5, 7)
+            ):
+                any_conn_works = True
+
+        if conns and self.null:
+            errors.append(
+                checks.Error(
+                    'You should not use nullable JSONFields if you have MySQL connectsions.',
+                    obj=self,
+                    id='jsonfallback.E001',
+                ),
+            )
+
+        if conns and not any_conn_works:
+            errors.append(
+                checks.Error(
+                    'MySQL 5.7+ is required to use JSONField',
+                    hint='At least one of your DB connections should be to '
+                         'MySQL 5.7+',
+                    obj=self,
+                    id='django_mysql.E016',
+                ),
+            )
+        return errors
+
+    def get_lookup(self, lookup_name):
+        # Have to 'unregister' some incompatible lookups
+        if lookup_name in {
+            'range', 'in', 'iexact', 'icontains', 'startswith',
+            'istartswith', 'endswith', 'iendswith', 'search', 'regex',
+            'iregex',
+        }:
+            raise NotImplementedError(
+                "Lookup '{}' doesn't work with JSONField".format(lookup_name),
+            )
+        return super().get_lookup(lookup_name)
 
 
 class PostgresOnlyLookup:

@@ -29,9 +29,11 @@ def test_default():
     assert b.data['foo'] == 'bar'
 
 
+"""
 @pytest.mark.django_db
 def test_nullable():
     Book.objects.create(data=None)
     b = Book.objects.first()
     b.clean()
     assert b.data is None
+"""

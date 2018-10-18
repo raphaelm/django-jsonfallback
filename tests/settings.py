@@ -63,6 +63,7 @@ elif os.environ['TOXDB'] == 'mysql':
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'jsonfallback',
             'USER': 'root',
+            'PASSWORD': 'root',
             'HOST': '127.0.0.1',
             'PORT': 3306
         }
