@@ -87,9 +87,14 @@ class FallbackJSONField(jsonb.JSONField):
         conns = mysql_connections()
         for alias, conn in conns:
             if (
+                    (
+                            hasattr(conn, 'mysql_version') and
+                            conn.mysql_version >= (5, 7)
+                    ) or (
+                    connection_is_mariadb(conn) and
                     hasattr(conn, 'mysql_version') and
-                    not connection_is_mariadb(conn) and
-                    conn.mysql_version >= (5, 7)
+                    conn.mysql_version >= (10, 2, 7)
+            )
             ):
                 any_conn_works = True
 
@@ -107,7 +112,7 @@ class FallbackJSONField(jsonb.JSONField):
                 checks.Error(
                     'MySQL 5.7+ is required to use JSONField',
                     hint='At least one of your DB connections should be to '
-                         'MySQL 5.7+',
+                         'MySQL 5.7+ or MariaDB 10.2.7+',
                     obj=self,
                     id='django_mysql.E016',
                 ),
@@ -117,7 +122,7 @@ class FallbackJSONField(jsonb.JSONField):
     def get_lookup(self, lookup_name):
         # Have to 'unregister' some incompatible lookups
         if lookup_name in {
-            'range', 'in', 'iexact', 'icontains', 'startswith',
+            'range', 'iexact', 'icontains', 'startswith',
             'istartswith', 'endswith', 'iendswith', 'search', 'regex',
             'iregex', 'lemgth'
         }:
@@ -257,15 +262,17 @@ if django.VERSION >= (2, 1):
         def process_rhs(self, compiler, connection):
             rhs, rhs_params = super().process_rhs(compiler, connection)
             if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
-                func_params = []
-                new_params = []
-                for i, p in enumerate(rhs_params):
-                    if not hasattr(p, '_prepare') and p is not None:
-                        print(repr(p))
-                        func, this_func_param = JSONValue(p).as_sql(compiler, connection)
-                        func_params.append(func)
-                        new_params += this_func_param
-                rhs, rhs_params = rhs % tuple(func_params), new_params
+                if not connection_is_mariadb(connection):
+                    func_params = []
+                    new_params = []
+                    for i, p in enumerate(rhs_params):
+                        if not hasattr(p, '_prepare') and p is not None:
+                            func, this_func_param = JSONValue(p).as_sql(compiler, connection)
+                            func_params.append(func)
+                            new_params += this_func_param
+                        else:
+                            func_params.append(p)
+                    rhs, rhs_params = rhs % tuple(func_params), new_params
 
             return rhs, rhs_params
 
@@ -330,12 +337,28 @@ class KeyTransformTextLookupMixin:
         )
         super().__init__(key_text_transform, *args, **kwargs)
 
+
+class StringKeyTransformTextLookupMixin(KeyTransformTextLookupMixin):
     def process_rhs(self, qn, connection):
         rhs = super().process_rhs(qn, connection)
         if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
             params = []
             for p in rhs[1]:
                 params.append(json.dumps(p))
+            return rhs[0], params
+        return rhs
+
+
+class NonStringKeyTransformTextLookupMixin:
+    def process_rhs(self, qn, connection):
+        rhs = super().process_rhs(qn, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            params = []
+            for p in rhs[1]:
+                val = json.loads(p)
+                if isinstance(val, (list, dict)):
+                    val = json.dumps(val)
+                params.append(val)
             return rhs[0], params
         return rhs
 
@@ -355,50 +378,90 @@ class MySQLCaseInsensitiveMixin:
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformExact(KeyTransformTextLookupMixin, builtin_lookups.IExact):
+class KeyTransformExact(builtin_lookups.Exact):
+    def process_rhs(self, compiler, connection):
+        rhs, rhs_params = super().process_rhs(compiler, connection)
+        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            func_params = []
+            new_params = []
+
+            for i, p in enumerate(rhs_params):
+                val = json.loads(p)
+                if isinstance(val, (list, dict)):
+                    if not connection_is_mariadb(connection):
+                        func, this_func_param = JSONValue(json.dumps(val)).as_sql(compiler, connection)
+                        func_params.append(func)
+                        new_params += this_func_param
+                    else:
+                        func_params.append('%s')
+                        new_params.append(json.dumps(val))
+                else:
+                    func_params.append('%s')
+                    new_params.append(val)
+                rhs, rhs_params = rhs % tuple(func_params), new_params
+        return rhs, rhs_params
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformIExact(MySQLCaseInsensitiveMixin, StringKeyTransformTextLookupMixin, builtin_lookups.IExact):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIExact(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IExact):
+class KeyTransformIContains(MySQLCaseInsensitiveMixin, StringKeyTransformTextLookupMixin, builtin_lookups.IContains):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIContains(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IContains):
+class KeyTransformContains(StringKeyTransformTextLookupMixin, builtin_lookups.Contains):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformContains(KeyTransformTextLookupMixin, builtin_lookups.Contains):
+class KeyTransformStartsWith(StringKeyTransformTextLookupMixin, builtin_lookups.StartsWith):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformStartsWith(KeyTransformTextLookupMixin, builtin_lookups.StartsWith):
+class KeyTransformIStartsWith(MySQLCaseInsensitiveMixin, StringKeyTransformTextLookupMixin, builtin_lookups.IStartsWith):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIStartsWith(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IStartsWith):
+class KeyTransformEndsWith(StringKeyTransformTextLookupMixin, builtin_lookups.EndsWith):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformEndsWith(KeyTransformTextLookupMixin, builtin_lookups.EndsWith):
+class KeyTransformIEndsWith(MySQLCaseInsensitiveMixin, StringKeyTransformTextLookupMixin, builtin_lookups.IEndsWith):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIEndsWith(MySQLCaseInsensitiveMixin, KeyTransformTextLookupMixin, builtin_lookups.IEndsWith):
+class KeyTransformRegex(StringKeyTransformTextLookupMixin, builtin_lookups.Regex):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformRegex(KeyTransformTextLookupMixin, builtin_lookups.Regex):
+class KeyTransformIRegex(StringKeyTransformTextLookupMixin, builtin_lookups.IRegex):
     pass
 
 
 @FallbackKeyTransform.register_lookup
-class KeyTransformIRegex(KeyTransformTextLookupMixin, builtin_lookups.IRegex):
+class KeyTransformLte(NonStringKeyTransformTextLookupMixin, builtin_lookups.LessThanOrEqual):
+    pass
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformLt(NonStringKeyTransformTextLookupMixin, builtin_lookups.LessThan):
+    pass
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformGte(NonStringKeyTransformTextLookupMixin, builtin_lookups.GreaterThanOrEqual):
+    pass
+
+
+@FallbackKeyTransform.register_lookup
+class KeyTransformGt(NonStringKeyTransformTextLookupMixin, builtin_lookups.GreaterThan):
     pass

@@ -18,8 +18,20 @@ xfail = pytest.mark.xfail(
 @pytest.fixture
 def books():
     return (
-        Book.objects.create(data={'title': 'The Lord of the Rings', 'author': 'Tolkien', 'year': 1954}),
-        Book.objects.create(data={'title': 'Harry Potter', 'author': 'Rowling', 'year': 1997})
+        Book.objects.create(data={
+            'title': 'The Lord of the Rings',
+            'author': 'Tolkien',
+            'publication': {
+                'year': 1954
+            }
+        }),
+        Book.objects.create(data={
+            'title': 'Harry Potter',
+            'author': 'Rowling',
+            'publication': {
+                'year': 1997
+            }
+        })
     )
 
 
@@ -28,8 +40,10 @@ def books():
 def test_query_subfield(books):
     assert Book.objects.filter(data__author='Tolkien').count() == 1
     assert Book.objects.filter(data__author='Brett').count() == 0
-    assert Book.objects.filter(data__year=1997).count() == 1
-    assert Book.objects.filter(data__year=1998).count() == 0
+    assert Book.objects.filter(data__publication__year=1997).count() == 1
+    assert Book.objects.filter(data__publication__year=1998).count() == 0
+    assert Book.objects.filter(data__publication={'year': 1997}).count() == 1
+    assert Book.objects.filter(data__publication={'year': 1998}).count() == 0
 
 
 @pytest.mark.django_db
@@ -42,7 +56,8 @@ def test_query_contains(books):
 @pytest.mark.django_db
 @xfail
 def test_query_contained_by(books):
-    assert Book.objects.filter(data__contained_by={'title': 'Harry Potter', 'author': 'Rowling', 'year': 1997}).count() == 1
+    assert Book.objects.filter(data__contained_by={'title': 'Harry Potter', 'author': 'Rowling',
+                                                   'publication': {'year': 1997}}).count() == 1
     assert Book.objects.filter(data__contained_by={'author': 'Brett'}).count() == 0
 
 
@@ -72,8 +87,8 @@ def test_query_has_any_keys(books):
 def test_query_exact_of_field(books):
     assert Book.objects.filter(data__title__exact='Harry Potter').count() == 1
     assert Book.objects.filter(data__title__exact='harry Potter').count() == 0
-    assert Book.objects.filter(data__year__exact=1997).count() == 1
-    assert Book.objects.filter(data__year__exact=1998).count() == 0
+    assert Book.objects.filter(data__publication__year__exact=1997).count() == 1
+    assert Book.objects.filter(data__publication__year__exact=1998).count() == 0
 
 
 @pytest.mark.django_db
@@ -127,6 +142,25 @@ def test_query_icontains_of_field(books):
 
 @pytest.mark.django_db
 @xfail
+def test_in_of_field(books):
+    assert Book.objects.filter(data__publication__year__in=[1997, 1998]).count() == 1
+
+
+@pytest.mark.django_db
+@xfail
+def test_query_gt_lt_of_field(books):
+    assert Book.objects.filter(data__publication__year__gt=1900).count() == 2
+    assert Book.objects.filter(data__publication__year__gt=1990).count() == 1
+    assert Book.objects.filter(data__publication__year__gte=1997).count() == 1
+    assert Book.objects.filter(data__publication__year__gte=1998).count() == 0
+    assert Book.objects.filter(data__publication__year__lt=1990).count() == 1
+    assert Book.objects.filter(data__publication__year__lt=2000).count() == 2
+    assert Book.objects.filter(data__publication__year__lte=1997).count() == 2
+    assert Book.objects.filter(data__publication__year__lte=1996).count() == 1
+
+
+@pytest.mark.django_db
+@xfail
 @pytest.mark.skipif(django.VERSION < (2, 1), reason="Not supported on Django 2.0")
 def test_order_by(books):
     assert list(Book.objects.order_by('data__title').values_list('data__title', flat=True)) == [
@@ -139,5 +173,5 @@ def test_order_by(books):
 @pytest.mark.django_db
 @pytest.mark.skipif(django.VERSION < (2, 1), reason="Not supported on Django 2.0")
 def test_query_equal(books):
-    assert Book.objects.filter(data={'author': 'Rowling', 'title': 'Harry Potter', 'year': 1997}).count() == 1
+    assert Book.objects.filter(data={'author': 'Rowling', 'title': 'Harry Potter', 'publication': {'year': 1997}}).count() == 1
     assert Book.objects.filter(data={'author': 'Brett'}).count() == 0
