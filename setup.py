@@ -38,6 +38,7 @@ setup(
 
     keywords='json database models',
     install_requires=[
+        'django-mysql'
     ],
 
     packages=find_packages(exclude=['tests', 'tests.*', 'demoproject', 'demoproject.*']),

@@ -13,14 +13,17 @@ JSONField with fallback for Django
 This is an extension to ``django.contrib.postgres.fields.JSONField``, that works on other
 databases than PostgreSQL.
 
-* On **MySQL**, it uses the native JSON data type and supports most features.
+* On **MySQL** and **MariaDB**, it uses the native JSON data type and supports most features.
 * On **SQLite** and all other databases, it just stores JSON strings in a text field and does not support querying.
 
-Compatible with:
+This is tested against:
 
 * Python 3.4 to 3.6
 * Django 2.0 to 2.1
-* SQlite, MySQL, PostgreSQL
+* MySQL 5.7
+* MariaDB 10.3
+* PostgreSQL 9.4
+* SQLite (no querying funcationality)
 
 Usage
 -----
