@@ -1,12 +1,12 @@
 import collections
-import django
 import json
 
+import django
 from django.contrib.postgres import lookups
-from django.contrib.postgres.fields import jsonb, JSONField
+from django.contrib.postgres.fields import JSONField, jsonb
 from django.core import checks
 from django.db import NotSupportedError
-from django.db.models import TextField, lookups as builtin_lookups, Func, Value
+from django.db.models import Func, TextField, Value, lookups as builtin_lookups
 from django_mysql.checks import mysql_connections
 from django_mysql.utils import connection_is_mariadb
 
@@ -86,16 +86,9 @@ class FallbackJSONField(jsonb.JSONField):
         any_conn_works = False
         conns = mysql_connections()
         for alias, conn in conns:
-            if (
-                    (
-                            hasattr(conn, 'mysql_version') and
-                            conn.mysql_version >= (5, 7)
-                    ) or (
-                    connection_is_mariadb(conn) and
-                    hasattr(conn, 'mysql_version') and
-                    conn.mysql_version >= (10, 2, 7)
-            )
-            ):
+            if ((hasattr(conn, 'mysql_version') and conn.mysql_version >= (5, 7))
+                    or (connection_is_mariadb(conn) and hasattr(conn, 'mysql_version') and
+                        conn.mysql_version >= (10, 2, 7))):
                 any_conn_works = True
 
         if conns and self.null:
@@ -199,8 +192,7 @@ class JSONSequencesMixin(object):
     def get_prep_lookup(self):
         if not isinstance(self.rhs, collections.Sequence):
             raise ValueError(
-                "JSONField's '{}' lookup only works with Sequences"
-                    .format(self.lookup_name),
+                "JSONField's '{}' lookup only works with Sequences".format(self.lookup_name),
             )
         return self.rhs
 
