@@ -84,7 +84,7 @@ class FallbackJSONField(jsonb.JSONField):
     def _check_mysql_version(self):
         errors = []
         any_conn_works = False
-        conns = mysql_connections()
+        conns = list(mysql_connections())
         for alias, conn in conns:
             if ((hasattr(conn, 'mysql_version') and conn.mysql_version >= (5, 7))
                     or (connection_is_mariadb(conn) and hasattr(conn, 'mysql_version') and
@@ -94,7 +94,7 @@ class FallbackJSONField(jsonb.JSONField):
         if conns and self.null:
             errors.append(
                 checks.Error(
-                    'You should not use nullable JSONFields if you have MySQL connectsions.',
+                    'You should not use nullable JSONFields if you have MySQL connections.',
                     obj=self,
                     id='jsonfallback.E001',
                 ),
