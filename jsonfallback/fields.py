@@ -6,7 +6,7 @@ from django.contrib.postgres import lookups
 from django.contrib.postgres.fields import JSONField, jsonb
 from django.core import checks
 from django.db import NotSupportedError
-from django.db.models import Func, TextField, Value, lookups as builtin_lookups
+from django.db.models import Func, TextField, Value, lookups as builtin_lookups, Expression
 from django_mysql.checks import mysql_connections
 from django_mysql.utils import connection_is_mariadb
 
@@ -247,6 +247,22 @@ class JSONValue(Func):
         super(JSONValue, self).__init__(Value(expression))
 
 
+def postgres_compile_json_path(key_transforms):
+    return "{" + ','.join(key_transforms) + "}"
+
+
+def mysql_compile_json_path(key_transforms):
+    path = ['$']
+    for key_transform in key_transforms:
+        try:
+            num = int(key_transform)
+            path.append('[{}]'.format(num))
+        except ValueError:  # non-integer
+            path.append('.')
+            path.append(key_transform)
+    return ''.join(path)
+
+
 if django.VERSION >= (2, 1):
     @FallbackJSONField.register_lookup
     class JSONExact(lookups.JSONExact):
@@ -281,23 +297,12 @@ class FallbackKeyTransform(jsonb.KeyTransform):
                 previous = previous.lhs
 
             lhs, params = compiler.compile(previous)
-            json_path = self.compile_json_path(key_transforms)
+            json_path = mysql_compile_json_path(key_transforms)
             return 'JSON_EXTRACT({}, %s)'.format(lhs), params + [json_path]
 
         raise NotSupportedError(
             'Transforms on JSONFields are only supported on PostgreSQL and MySQL at the moment.'
         )
-
-    def compile_json_path(self, key_transforms):
-        path = ['$']
-        for key_transform in key_transforms:
-            try:
-                num = int(key_transform)
-                path.append('[{}]'.format(num))
-            except ValueError:  # non-integer
-                path.append('.')
-                path.append(key_transform)
-        return ''.join(path)
 
 
 class FallbackKeyTransformFactory:

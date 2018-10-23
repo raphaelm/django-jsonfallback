@@ -2,8 +2,10 @@ import django
 import pytest
 from django.conf import settings
 from django.db import NotSupportedError
+from django.db.models import CharField
 
 from .testapp.models import Book
+from jsonfallback.functions import JSONExtract
 
 xfail = pytest.mark.xfail(
     condition=(
@@ -44,6 +46,21 @@ def test_query_subfield(books):
     assert Book.objects.filter(data__publication__year=1998).count() == 0
     assert Book.objects.filter(data__publication={'year': 1997}).count() == 1
     assert Book.objects.filter(data__publication={'year': 1998}).count() == 0
+
+
+@pytest.mark.django_db
+@xfail
+def test_query_extract(books):
+    assert list(
+        Book.objects.annotate(author=JSONExtract('data', 'author'))
+            .order_by('author')
+            .values_list('author', flat=True)
+    ) == [
+        'Rowling',
+        'Tolkien',
+    ]
+    assert Book.objects.annotate(year=JSONExtract('data', 'publication', 'year')).filter(year=1997).count() == 1
+    assert Book.objects.annotate(year=JSONExtract('data', 'publication', 'year')).filter(year=1998).count() == 0
 
 
 @pytest.mark.django_db
