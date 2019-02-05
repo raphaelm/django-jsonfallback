@@ -32,9 +32,9 @@ class FallbackJSONField(jsonb.JSONField):
         self.decoder = json.JSONDecoder()
 
     def db_type(self, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().db_type(connection)
-        elif connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        elif '.mysql' in connection.settings_dict['ENGINE']:
             return 'json'
         else:
             data = self.db_type_parameters(connection)
@@ -50,7 +50,7 @@ class FallbackJSONField(jsonb.JSONField):
 
     def get_db_prep_value(self, value, connection, prepared=False):
         value = super().get_db_prep_value(value, connection, prepared)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return value
         elif value is None:
             return None
@@ -58,9 +58,9 @@ class FallbackJSONField(jsonb.JSONField):
             return value.dumps(value.adapted)
 
     def from_db_value(self, value, expression, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return value
-        elif connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        elif '.postgresql' in connection.settings_dict['ENGINE']:
             if isinstance(value, str):
                 return self.decoder.decode(value)
             else:
@@ -127,7 +127,7 @@ class FallbackJSONField(jsonb.JSONField):
 
 class FallbackLookup:
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
         raise NotSupportedError(
             'Lookups on JSONFields are only supported on PostgreSQL and MySQL at the moment.'
@@ -138,9 +138,9 @@ class FallbackLookup:
 class DataContains(FallbackLookup, lookups.DataContains):
 
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs, lhs_params = self.process_lhs(qn, connection)
             rhs, rhs_params = self.process_rhs(qn, connection)
             for i, p in enumerate(rhs_params):
@@ -154,9 +154,9 @@ class DataContains(FallbackLookup, lookups.DataContains):
 class ContainedBy(FallbackLookup, lookups.ContainedBy):
 
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs, lhs_params = self.process_lhs(qn, connection)
             rhs, rhs_params = self.process_rhs(qn, connection)
             for i, p in enumerate(rhs_params):
@@ -177,9 +177,9 @@ class HasKey(FallbackLookup, lookups.HasKey):
         return super().get_prep_lookup()
 
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs, lhs_params = self.process_lhs(qn, connection)
             key_name = self.rhs
             path = '$.{}'.format(json.dumps(key_name))
@@ -201,9 +201,9 @@ class JSONSequencesMixin(object):
 class HasKeys(FallbackLookup, lookups.HasKeys):
 
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs, lhs_params = self.process_lhs(qn, connection)
             paths = [
                 '$.{}'.format(json.dumps(key_name))
@@ -222,9 +222,9 @@ class HasKeys(FallbackLookup, lookups.HasKeys):
 class HasAnyKeys(FallbackLookup, lookups.HasAnyKeys):
 
     def as_sql(self, qn, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs, lhs_params = self.process_lhs(qn, connection)
             paths = [
                 '$.{}'.format(json.dumps(key_name))
@@ -253,7 +253,7 @@ if django.VERSION >= (2, 1):
 
         def process_rhs(self, compiler, connection):
             rhs, rhs_params = super().process_rhs(compiler, connection)
-            if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+            if '.mysql' in connection.settings_dict['ENGINE']:
                 if not connection_is_mariadb(connection):
                     func_params = []
                     new_params = []
@@ -271,9 +271,9 @@ if django.VERSION >= (2, 1):
 
 class FallbackKeyTransform(jsonb.KeyTransform):
     def as_sql(self, compiler, connection):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             return super().as_sql(compiler, connection)
-        elif connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        elif '.mysql' in connection.settings_dict['ENGINE']:
             key_transforms = [self.key_name]
             previous = self.lhs
             while isinstance(previous, FallbackKeyTransform):
@@ -333,7 +333,7 @@ class KeyTransformTextLookupMixin:
 class StringKeyTransformTextLookupMixin(KeyTransformTextLookupMixin):
     def process_rhs(self, qn, connection):
         rhs = super().process_rhs(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             params = []
             for p in rhs[1]:
                 params.append(json.dumps(p))
@@ -344,7 +344,7 @@ class StringKeyTransformTextLookupMixin(KeyTransformTextLookupMixin):
 class NonStringKeyTransformTextLookupMixin:
     def process_rhs(self, qn, connection):
         rhs = super().process_rhs(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             params = []
             for p in rhs[1]:
                 val = json.loads(p)
@@ -358,13 +358,13 @@ class NonStringKeyTransformTextLookupMixin:
 class MySQLCaseInsensitiveMixin:
     def process_lhs(self, compiler, connection, lhs=None):
         lhs = super().process_lhs(compiler, connection, lhs=None)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             lhs = 'LOWER(%s)' % lhs[0], lhs[1]
         return lhs
 
     def process_rhs(self, qn, connection):
         rhs = super().process_rhs(qn, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             rhs = 'LOWER(%s)' % rhs[0], rhs[1]
         return rhs
 
@@ -373,7 +373,7 @@ class MySQLCaseInsensitiveMixin:
 class KeyTransformExact(builtin_lookups.Exact):
     def process_rhs(self, compiler, connection):
         rhs, rhs_params = super().process_rhs(compiler, connection)
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        if '.mysql' in connection.settings_dict['ENGINE']:
             func_params = []
             new_params = []
 
