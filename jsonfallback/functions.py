@@ -19,7 +19,7 @@ class JSONExtract(Expression):
         return c
 
     def as_sql(self, compiler, connection, function=None, template=None, arg_joiner=None, **extra_context):
-        if connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql':
+        if '.postgresql' in connection.settings_dict['ENGINE']:
             params = []
             arg_sql, arg_params = compiler.compile(self.source_expression)
             params.extend(arg_params)
@@ -27,7 +27,7 @@ class JSONExtract(Expression):
             params.append(json_path)
             template = '{} #> %s'.format(arg_sql)
             return template, params
-        elif connection.settings_dict['ENGINE'] == 'django.db.backends.mysql':
+        elif '.mysql' in connection.settings_dict['ENGINE']:
             params = []
             arg_sql, arg_params = compiler.compile(self.source_expression)
             params.extend(arg_params)
