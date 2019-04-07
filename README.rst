@@ -20,7 +20,7 @@ This is tested against:
 
 * Python 3.4 to 3.7
 * Django 2.0 to 2.2
-* MySQL 5.7
+* MySQL 5.7 (only on Django 2.1+)
 * MariaDB 10.3
 * PostgreSQL 9.4
 * SQLite (no querying funcationality)
