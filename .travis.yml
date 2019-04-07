@@ -12,14 +12,14 @@ services:
   - postgresql
 matrix:
   include:
-    - python: 3.4
-      env: TOXENV=py34-django21 TOXDB=mysql DB=mysql:5.7
     - python: 3.6
       env: TOXENV=py36-django21 TOXDB=mysql DB=mysql:5.7
     - python: 3.7
       env: TOXENV=py37-django22 TOXDB=mysql DB=mysql:5.7
-    - python: 3.6
-      env: TOXENV=py36-django22 TOXDB=mariadb DB=mariadb:10.3
+    - python: 3.4
+      env: TOXENV=py34-django20 TOXDB=mariadb DB=mariadb:10.3
+    - python: 3.7
+      env: TOXENV=py37-django22 TOXDB=mariadb DB=mariadb:10.3
     - python: 3.4
       env: TOXENV=py34-django20 TOXDB=postgres
     - python: 3.5
