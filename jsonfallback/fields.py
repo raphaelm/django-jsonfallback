@@ -117,7 +117,7 @@ class FallbackJSONField(jsonb.JSONField):
         if lookup_name in {
             'range', 'iexact', 'icontains', 'startswith',
             'istartswith', 'endswith', 'iendswith', 'search', 'regex',
-            'iregex', 'lemgth'
+            'iregex', 'length'
         }:
             raise NotImplementedError(
                 "Lookup '{}' doesn't work with JSONField".format(lookup_name),
