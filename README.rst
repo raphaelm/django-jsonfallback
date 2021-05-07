@@ -1,6 +1,12 @@
 JSONField with fallback for Django
 ==================================
 
+UNMAINTAINED
+------------
+
+**This library is no longer maintained since Django now includes this functionality natively.** You do not need any upgrade steps, you can just replace all your FallbackJSONField usages with JSONField *including in your old migrations*.
+
+
 .. image:: https://img.shields.io/pypi/v/django-jsonfallback.svg
    :target: https://pypi.python.org/pypi/django-jsonfallback
 
